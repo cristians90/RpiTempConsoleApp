@@ -1,35 +1,46 @@
 ﻿using System;
 using System.Device.Gpio;
 using System.Threading;
-using Iot.Device.CpuTemperature;
+using System.Threading.Tasks;
+using Iot.Device.DHTxx;
 
 namespace RpiTempConsoleApp
 {
     class Program
     {
-        static CpuTemperature temperature = new CpuTemperature();
-        static GpioController controller = new GpioController();
-
         static void Main(string[] args)
         {
-            controller.OpenPin(22, PinMode.Output);
+            Console.WriteLine("Started");
+            Console.WriteLine();
 
-            while (true)
+            var cancellationTokenSource = new CancellationTokenSource();
+            var cancellationToken = cancellationTokenSource.Token;
+
+            var task = Task.Run(async () =>
             {
-                if (temperature.IsAvailable)
+                using (var dht = new Dht11(7, PinNumberingScheme.Board))
                 {
-                    Console.WriteLine($"The CPU temperature is {temperature.Temperature.Celsius}");
+                    while (!cancellationToken.IsCancellationRequested)
+                    {
+                        var celsius = dht.Temperature.Celsius.ToString();
+                        var humidity = dht.Humidity.ToString();
+
+                        if (celsius != "NaN" && humidity != "NaN")
+                            Console.WriteLine($"TEMP: {celsius}Cº | HUM: {humidity}%");
+
+                        await Task.Delay(1000);
+                    }
                 }
 
-                controller.Write(22, PinValue.High);
+            }, cancellationToken);
 
-                Thread.Sleep(2000);
+            Console.WriteLine("Press enter to stop the task");
+            Console.ReadLine();
+            cancellationTokenSource.Cancel();
 
-                controller.Write(22, PinValue.Low);
-
-                Thread.Sleep(2000);
-            }
+            Console.WriteLine();
+            Console.WriteLine("Press any key to close");
+            Console.ReadKey();
         }
-
     }
 }
