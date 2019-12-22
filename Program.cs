@@ -1,15 +1,38 @@
 ﻿using System;
 using System.Device.Gpio;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Iot.Device.DHTxx;
+using Microsoft.Azure.Devices.Client;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 
 namespace RpiTempConsoleApp
 {
     class Program
     {
+        const string azureIotHubConnString = "HostName=cleveritsensordevicestesthub.azure-devices.net;DeviceId=TH-S0001;SharedAccessKey=qmmxZDQlZ91mOzXKhRF0tCnm3ThmEeUTywuOS/5SUmk=";
+
         static void Main(string[] args)
         {
+            var jsonSerializerSettings = new JsonSerializerSettings
+            {
+                ContractResolver = new DefaultContractResolver
+                {
+                    NamingStrategy = new CamelCaseNamingStrategy()
+                },
+                Formatting = Newtonsoft.Json.Formatting.Indented
+            };
+
+            var deviceClient = DeviceClient.CreateFromConnectionString(azureIotHubConnString);
+
+            if (deviceClient == null)
+            {
+                Console.WriteLine("Failed to create DeviceClient!");
+                return;
+            }
+
             Console.WriteLine("Started");
             Console.WriteLine();
 
@@ -22,13 +45,27 @@ namespace RpiTempConsoleApp
                 {
                     while (!cancellationToken.IsCancellationRequested)
                     {
-                        var celsius = dht.Temperature.Celsius.ToString();
-                        var humidity = dht.Humidity.ToString();
+                        var message = new DeviceMessage
+                        {
+                            Humidity = dht.Humidity,
+                            Temperature = new TemperatureMessage
+                            {
+                                Celsius = dht.Temperature.Celsius,
+                                Kelvin = dht.Temperature.Kelvin,
+                                Fahrenheit = dht.Temperature.Fahrenheit
+                            }
+                        };
 
-                        if (celsius != "NaN" && humidity != "NaN")
-                            Console.WriteLine($"TEMP: {celsius}Cº | HUM: {humidity}%");
+                        if (!dht.IsLastReadSuccessful)
+                        {
+                            continue;
+                        }
 
-                        await Task.Delay(1000);
+                        var jsonMessage = JsonConvert.SerializeObject(message, jsonSerializerSettings);
+                        var eventMessage = new Message(Encoding.UTF8.GetBytes(jsonMessage));
+                        await deviceClient.SendEventAsync(eventMessage);
+
+                        await Task.Delay(3000);
                     }
                 }
 
